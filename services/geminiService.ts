@@ -2,23 +2,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Source, SearchFocus, AttachedFile, ModelID } from "../types";
 
-// Safety check for process.env in browser environments to prevent white-screen crashes
-const getApiKey = () => {
-  try {
-    return (process.env.API_KEY as string) || '';
-  } catch (e) {
-    console.warn("process.env.API_KEY not found in global scope");
-    return '';
-  }
-};
-
 export class GeminiService {
   /**
    * Generates an image using gemini-2.5-flash-image
    */
   async generateImage(prompt: string): Promise<string> {
-    const apiKey = getApiKey();
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{ parts: [{ text: prompt }] }],
@@ -39,8 +28,7 @@ export class GeminiService {
    * Fetches trending global news using gemini-3-flash-preview with JSON schema.
    */
   async getDiscoverTrends(): Promise<{ title: string; description: string }[]> {
-    const apiKey = getApiKey();
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -87,8 +75,7 @@ export class GeminiService {
       };
     }
 
-    const apiKey = getApiKey();
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const sysPrompt = `You are a high-performance Research Engine (Model: ${model}). 
     Mode: ${focus}. Focus on synthesis and directness. 

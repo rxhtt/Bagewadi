@@ -1,10 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bagewadi | Quantum Intelligence</title>
-    <!-- Robust Content Security Policy for API connectivity and Media rendering -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; 
       frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; 
@@ -14,7 +14,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+    <script>
+      // Global shim for process.env to prevent ReferenceErrors in browser
+      window.process = window.process || { env: {} };
+    </script>
     <style>
         :root {
             --gemini-bg: #131314;
@@ -24,7 +28,7 @@
             --gemini-accent: #444746;
         }
         body {
-            font-family: 'Inter', 'Google Sans', sans-serif;
+            font-family: 'Inter', sans-serif;
             background-color: var(--gemini-bg);
             color: var(--gemini-text);
             margin: 0;
@@ -54,28 +58,24 @@
             0% { background-position: 0% 50%; }
             100% { background-position: 400% 50%; }
         }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
-    <script type="importmap">
-    {
-      "imports": {
-        "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-        "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
-        "react/": "https://esm.sh/react@^19.2.4/",
-        "react": "https://esm.sh/react@^19.2.4"
-      }
-    }
-    </script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4"
+  }
+}
+</script>
 </head>
 <body>
     <div id="root"></div>
-    <!-- CRITICAL: Added entry point script tag. Without this, the app remains a blank white page. -->
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>
