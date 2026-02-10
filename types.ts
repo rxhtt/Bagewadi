@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export type ModelID = 'sonar-pro' | 'gpt-4o' | 'claude-3.5' | 'gemini-3-pro-preview';
@@ -16,6 +15,17 @@ export interface AttachedFile {
   size: number;
   data: string; // Base64
   content?: string; 
+}
+
+export type MediaItemType = 'video' | 'music' | 'short';
+
+export interface YoutubeShort {
+  id: string;
+  title: string;
+  channelTitle: string;
+  thumbnail: string;
+  type?: MediaItemType;
+  description?: string;
 }
 
 export interface ChatMessage {
@@ -39,13 +49,6 @@ export interface Thread {
   createdAt: number;
 }
 
-export interface YoutubeShort {
-  id: string;
-  title: string;
-  channelTitle: string;
-  thumbnail: string;
-}
-
 export enum SearchFocus {
   ALL = 'All',
   ACADEMIC = 'Academic',
@@ -53,7 +56,8 @@ export enum SearchFocus {
   WOLFRAM = 'WolframAlpha',
   YOUTUBE = 'YouTube',
   REDDIT = 'Reddit',
-  CANVAS = 'Canvas'
+  CANVAS = 'Canvas',
+  MUSIC = 'Music'
 }
 
 export interface FocusOption {
@@ -64,6 +68,7 @@ export interface FocusOption {
 }
 
 export type AppView = 'home' | 'discover' | 'library' | 'profile';
+export type DiscoveryMode = 'all' | 'youtube' | 'shorts' | 'music';
 
 export interface KeyStatus {
   key: string;

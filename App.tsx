@@ -5,8 +5,8 @@ import SettingsModal from './components/SettingsModal';
 import ShortsCarousel from './components/ShortsCarousel';
 import VideoModal from './components/VideoModal';
 import { youtubeService } from './services/youtubeService';
-import { gemini } from './services/geminiService';
-import { ChatMessage, SearchFocus, Thread, AppView, AttachedFile, ModelID, ImageProvider, YoutubeShort } from './types';
+import { perplexity } from './services/perplexityService';
+import { ChatMessage, SearchFocus, Thread, AppView, YoutubeShort, DiscoveryMode } from './types';
 
 const App: React.FC = () => {
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -14,72 +14,108 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>('home');
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>('all');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [vpnEnabled, setVpnEnabled] = useState(() => localStorage.getItem('vpn_status') !== 'false');
   
+  // Aether-Stream Multimedia States
   const [shorts, setShorts] = useState<YoutubeShort[]>([]);
-  const [discoverQuery, setDiscoverQuery] = useState('');
-  const [selectedShort, setSelectedShort] = useState<YoutubeShort | null>(null);
+  const [music, setMusic] = useState<YoutubeShort[]>([]);
+  const [videos, setVideos] = useState<YoutubeShort[]>([]);
+  const [discoverySearchQuery, setDiscoverySearchQuery] = useState('');
+  const [selectedMedia, setSelectedMedia] = useState<YoutubeShort | null>(null);
   const [isDiscoverLoading, setIsDiscoverLoading] = useState(false);
+  
+  // Infinite Scroll Helpers
+  const [discoveryPage, setDiscoveryPage] = useState(1);
+  const discoverObserverTarget = useRef<HTMLDivElement>(null);
 
-  const [apiKeys, setApiKeys] = useState<string[]>(() => {
-    const saved = localStorage.getItem('pplx_keys');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [youtubeKeys, setYoutubeKeys] = useState<string[]>(() => {
-    const saved = localStorage.getItem('yt_keys_pool');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [apiKeys, setApiKeys] = useState<string[]>(() => JSON.parse(localStorage.getItem('pplx_keys') || '[]'));
+  const [youtubeKeys, setYoutubeKeys] = useState<string[]>(() => JSON.parse(localStorage.getItem('yt_keys_pool') || '[]'));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeThread = threads.find(t => t.id === activeThreadId);
 
-  // Sync keys with services
-  useEffect(() => {
-    gemini.setKeys(apiKeys);
-  }, [apiKeys]);
+  useEffect(() => { perplexity.setKeys(apiKeys); }, [apiKeys]);
+  useEffect(() => { youtubeService.setKeys(youtubeKeys); }, [youtubeKeys]);
 
+  // Load Initial Discovery or reset on category change
   useEffect(() => {
-    youtubeService.setKeys(youtubeKeys);
-  }, [youtubeKeys]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('perplex-vault-threads');
-    if (saved) {
-      try { setThreads(JSON.parse(saved)); } catch (e) { console.error("Sync failed", e); }
+    if (currentView === 'discover') {
+      setShorts([]);
+      setMusic([]);
+      setVideos([]);
+      setDiscoveryPage(1);
+      loadDiscovery(discoverySearchQuery || getDefaultQuery(discoveryMode));
     }
-  }, []);
+  }, [currentView, discoveryMode]);
 
+  // Infinite Scroll Intersection Observer
   useEffect(() => {
-    localStorage.setItem('perplex-vault-threads', JSON.stringify(threads));
-  }, [threads]);
+    if (currentView !== 'discover') return;
+    
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && !isDiscoverLoading) {
+          setDiscoveryPage(p => p + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
 
-  useEffect(() => {
-    if (currentView === 'discover' && shorts.length === 0) {
-      loadDiscover();
+    if (discoverObserverTarget.current) {
+      observer.observe(discoverObserverTarget.current);
     }
-  }, [currentView, youtubeKeys]);
 
-  const loadDiscover = async (query: string = "trending research") => {
-    if (youtubeKeys.length === 0 && apiKeys.length === 0) {
+    return () => observer.disconnect();
+  }, [currentView, isDiscoverLoading]);
+
+  // Fetch more results when discovery page increments
+  useEffect(() => {
+    if (discoveryPage > 1 && currentView === 'discover') {
+      loadDiscovery(discoverySearchQuery || getDefaultQuery(discoveryMode), true);
+    }
+  }, [discoveryPage]);
+
+  const getDefaultQuery = (mode: DiscoveryMode) => {
+    switch(mode) {
+      case 'music': return "top global music hits 2025";
+      case 'shorts': return "most viral shorts global";
+      case 'youtube': return "trending global news events";
+      default: return "latest global technology and science news";
+    }
+  };
+
+  const loadDiscovery = async (query: string, append: boolean = false) => {
+    if (youtubeKeys.length === 0) {
       setIsSettingsOpen(true);
       return;
     }
     setIsDiscoverLoading(true);
     try {
-      const data = await youtubeService.getShorts(query);
-      setShorts(data);
+      const results = await Promise.all([
+        discoveryMode === 'all' || discoveryMode === 'shorts' ? youtubeService.getShorts(query) : Promise.resolve([]),
+        discoveryMode === 'all' || discoveryMode === 'music' ? youtubeService.getMusic(query) : Promise.resolve([]),
+        discoveryMode === 'all' || discoveryMode === 'youtube' ? youtubeService.getVideos(query) : Promise.resolve([])
+      ]);
+      
+      setShorts(prev => append ? [...prev, ...results[0]] : results[0]);
+      setMusic(prev => append ? [...prev, ...results[1]] : results[1]);
+      setVideos(prev => append ? [...prev, ...results[2]] : results[2]);
     } catch (e) {
-      console.error(e);
+      console.error("Discovery Engine Error:", e);
     } finally {
       setIsDiscoverLoading(false);
     }
   };
 
-  const startNewThread = () => {
-    setActiveThreadId(null);
-    setCurrentView('home');
+  const handleDiscoverySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShorts([]);
+    setMusic([]);
+    setVideos([]);
+    setDiscoveryPage(1);
+    loadDiscovery(discoverySearchQuery || getDefaultQuery(discoveryMode));
   };
 
   const handleSearch = async (query: string, focus: SearchFocus) => {
@@ -102,13 +138,11 @@ const App: React.FC = () => {
       const threadToQuery = threads.find(t => t.id === currentThreadId) || { messages: [] };
       const history = (threadToQuery.messages || []).map(m => ({ role: m.role, content: m.content }));
       
-      const response = await gemini.searchAndRespond(query, focus, 'gemini-3-pro-preview', history);
+      const response = await perplexity.searchAndRespond(query, focus, 'sonar-pro', history);
 
       let suggestedShorts: YoutubeShort[] = [];
-      const videoKeywords = /video|short|watch|tutorial|youtube|how to|clips?|show me/i;
-      if (videoKeywords.test(query.toLowerCase()) && youtubeKeys.length > 0) {
-        const cleanQuery = query.toLowerCase().replace(/video|short|watch|show me|youtube|how to|clips?/gi, '').trim();
-        suggestedShorts = await youtubeService.getShorts(cleanQuery || "latest trends");
+      if (youtubeKeys.length > 0) {
+        suggestedShorts = await youtubeService.getVideos(query);
       }
 
       setThreads(prev => prev.map(t => t.id === currentThreadId ? {
@@ -125,7 +159,7 @@ const App: React.FC = () => {
     } catch (e: any) {
       setThreads(prev => prev.map(t => t.id === currentThreadId ? {
         ...t,
-        messages: t.messages.map(m => m.id === assistantMsgId ? { ...m, content: `Neural link error: ${e.message}. Please check your Gemini API keys in settings.`, isSearching: false } : m)
+        messages: t.messages.map(m => m.id === assistantMsgId ? { ...m, content: `Neural Node Timeout. Check Keys in System Config.`, isSearching: false } : m)
       } : t));
     } finally {
       setIsLoading(false);
@@ -134,120 +168,73 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#131314] text-[#e3e3e3] overflow-hidden selection:bg-blue-600/30">
+    <div className="flex h-screen bg-[#050505] text-[#f5f5f7] overflow-hidden selection:bg-blue-600/40">
       <Sidebar 
-        threads={threads} activeThreadId={activeThreadId} onNewThread={startNewThread} onSelectThread={setActiveThreadId} onOpenSettings={() => setIsSettingsOpen(true)}
-        currentView={currentView} setView={setCurrentView} vpnEnabled={vpnEnabled} isOpen={isMobileSidebarOpen} onClose={() => setIsMobileSidebarOpen(false)}
+        threads={threads} activeThreadId={activeThreadId} onNewThread={() => { setActiveThreadId(null); setCurrentView('home'); }} 
+        onSelectThread={setActiveThreadId} onOpenSettings={() => setIsSettingsOpen(true)}
+        currentView={currentView} setView={setCurrentView} 
+        discoveryMode={discoveryMode} setDiscoveryMode={setDiscoveryMode}
+        vpnEnabled={vpnEnabled} isOpen={isMobileSidebarOpen} onClose={() => setIsMobileSidebarOpen(false)}
       />
       
-      <main className="flex-1 flex flex-col relative min-w-0 bg-[#131314]">
-        <header className="h-16 flex items-center justify-between px-8 z-10 shrink-0 border-b border-white/5 bg-[#131314]/80 backdrop-blur-3xl sticky top-0">
-           <div className="flex items-center gap-6">
-             <button onClick={() => setIsMobileSidebarOpen(true)} className="p-3 hover:bg-zinc-800 rounded-full lg:hidden text-zinc-400">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-             </button>
-             <div className="flex items-center gap-4">
-                <span className="text-2xl font-black tracking-tighter text-white uppercase group cursor-default">
-                  B<span className="text-blue-500">AGE</span>WADI
-                </span>
-                <div className="hidden sm:flex items-center px-2 py-0.5 bg-zinc-800 rounded border border-white/10">
-                   <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Quantum V2.1</span>
-                </div>
-             </div>
-           </div>
-           <div className="flex items-center gap-4">
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 hover:bg-zinc-800 rounded-full text-zinc-500 transition-all hover:rotate-90">
-                 <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 flex items-center justify-center text-[11px] font-black text-white border border-white/10">BG</div>
+      <main className="flex-1 flex flex-col relative min-w-0">
+        <header className="h-20 flex items-center justify-between px-8 z-30 border-b border-white/5 bg-[#050505]/80 backdrop-blur-2xl lg:hidden">
+           <button onClick={() => setIsMobileSidebarOpen(true)} className="p-3 bg-zinc-900 rounded-2xl text-zinc-400 active-tap">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+           </button>
+           <span className="text-xl font-black tracking-tighter text-white uppercase">Bagewadi</span>
+           <div className="w-10 h-10 rounded-full border-2 border-white/10 overflow-hidden active-tap" onClick={() => setIsSettingsOpen(true)}>
+              <img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=100&auto=format&fit=crop" className="w-full h-full object-cover" />
            </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar custom-scrollbar relative scroll-smooth bg-[#131314]">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar custom-scrollbar relative scroll-smooth bg-[#050505]">
           {currentView === 'home' && (
-            <div className="max-w-4xl mx-auto pt-24 px-6 space-y-24">
+            <div className="max-w-4xl mx-auto pt-24 md:pt-40 px-6 space-y-24 pb-48">
               {!activeThread || activeThread.messages.length === 0 ? (
-                <>
-                  <div className="space-y-6 text-center sm:text-left">
-                    <h1 className="text-6xl sm:text-8xl font-black text-white w-fit pb-3 tracking-tighter leading-[0.85] uppercase">Master <br/><span className="gemini-gradient">Information.</span></h1>
-                    <p className="text-zinc-500 text-xl font-medium max-w-2xl leading-relaxed tracking-tight">Your neural-linked gateway to global search, high-fidelity synthesis, and discovery.</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pb-64">
+                <div className="space-y-12 py-12 text-center md:text-left animate-in fade-in slide-in-from-bottom-12 duration-1000 cubic-bezier(0.2, 0.8, 0.2, 1)">
+                  <h1 className="text-7xl md:text-[10rem] font-black text-white tracking-tighter leading-[0.75] uppercase">PURE <br/><span className="text-zinc-800">SYNC.</span></h1>
+                  <p className="text-zinc-600 text-xl md:text-2xl font-black uppercase tracking-[0.5em] leading-none">BAGEWADI STREAM HUB</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-20">
                     {[
-                      { icon: '🎨', text: 'Generate a realistic landscape of Mars colonisation' },
-                      { icon: '🎬', text: 'Show me clips explaining string theory' },
-                      { icon: '🧬', text: 'Analyze the latest breakthroughs in mRNA research' },
-                      { icon: '💾', text: 'Architect a scalable distributed SQL database' }
-                    ].map((suggestion, i) => (
-                      <button 
-                        key={i}
-                        onClick={() => handleSearch(suggestion.text, SearchFocus.ALL)}
-                        className="p-10 bg-zinc-900/50 hover:bg-zinc-800 rounded-[3rem] text-left transition-all group relative h-64 border border-white/5 hover:border-white/20 hover:-translate-y-4 active:scale-95 overflow-hidden"
-                      >
-                        <div className="text-4xl mb-8 group-hover:scale-125 transition-all duration-700">{suggestion.icon}</div>
-                        <span className="text-sm font-black text-zinc-400 group-hover:text-white line-clamp-3 leading-tight tracking-tight uppercase transition-colors">{suggestion.text}</span>
-                        <div className="absolute bottom-8 right-8 p-4 bg-zinc-900 rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-500 border border-white/10 group-hover:translate-x-0 translate-x-10">
-                          <svg className="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
-                        </div>
+                      { icon: '🧬', text: 'Analyze mRNA innovations for cancer 2025' },
+                      { icon: '🌌', text: 'Synthesize the state of nuclear fusion trajectory' }
+                    ].map((s, i) => (
+                      <button key={i} onClick={() => handleSearch(s.text, SearchFocus.ALL)} className="p-10 bg-zinc-900/40 hover:bg-zinc-800 border border-white/5 rounded-[3rem] text-left transition-all active-tap shadow-2xl">
+                        <div className="text-4xl mb-6">{s.icon}</div>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 leading-relaxed">{s.text}</p>
                       </button>
                     ))}
                   </div>
-                </>
+                </div>
               ) : (
-                <div className="max-w-4xl mx-auto px-6 py-16 space-y-24 pb-80">
+                <div className="space-y-20 py-12 pb-96">
                   {activeThread.messages.map((msg) => (
-                    <div key={msg.id} className="flex gap-8 group animate-in fade-in slide-in-from-bottom-10 duration-700">
-                      <div className="w-14 h-14 rounded-[1.75rem] shrink-0 flex items-center justify-center mt-2 border border-white/10 overflow-hidden">
-                        {msg.role === 'user' ? (
-                          <div className="w-full h-full bg-gradient-to-tr from-blue-700 to-indigo-900 flex items-center justify-center font-black text-[10px] text-white tracking-widest">USER</div>
-                        ) : (
-                          <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                            <svg className="w-8 h-8 gemini-gradient" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-10">
-                        {msg.type === 'image' && msg.imageUrl ? (
-                          <div className="rounded-[3.5rem] overflow-hidden border border-white/10 bg-zinc-900 group/img relative aspect-[16/10]">
-                            <img src={msg.imageUrl} alt="AI Visual Node" className="w-full h-full object-cover transition-transform duration-[4000ms] group-hover/img:scale-110" />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-all duration-700 flex items-center justify-center">
-                               <a href={msg.imageUrl} download target="_blank" className="p-7 bg-white/10 backdrop-blur-3xl rounded-[2rem] text-white hover:bg-white/25 border border-white/20">
-                                 <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                               </a>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-[19px] text-zinc-200 leading-[1.85] whitespace-pre-wrap font-medium tracking-tight">
-                            {msg.content || (msg.isSearching && (
-                              <div className="flex flex-col gap-6">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-ping"></div>
-                                  <span className="text-zinc-600 text-[11px] font-black uppercase tracking-[0.5em] animate-pulse">Syncing Quantum Nodes...</span>
-                                </div>
-                                <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden shadow-inner">
-                                  <div className="h-full bg-blue-600 w-1/4 animate-[loading_1.8s_infinite_ease-in-out]"></div>
-                                </div>
+                    <div key={msg.id} className={`flex gap-6 sm:gap-8 animate-in fade-in slide-in-from-bottom-12 duration-[800ms] ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                      {msg.role === 'assistant' && (
+                        <div className="w-14 h-14 rounded-[1.5rem] bg-zinc-900 border border-white/10 shrink-0 flex items-center justify-center shadow-xl">
+                          <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>
+                        </div>
+                      )}
+                      <div className={`flex-1 max-w-[92%] sm:max-w-[85%] space-y-8 ${msg.role === 'user' ? 'chat-bubble-user p-8 text-white font-medium' : 'chat-bubble-ai'}`}>
+                        <div className="text-[19px] sm:text-[21px] leading-relaxed whitespace-pre-wrap tracking-tight font-medium text-zinc-200">
+                          {msg.content || (msg.isSearching && (
+                            <div className="space-y-6">
+                              <div className="flex items-center gap-4">
+                                <div className="w-3 h-3 bg-blue-500 rounded-full animate-ping shadow-[0_0_20px_rgba(59,130,246,0.6)]"></div>
+                                <span className="text-zinc-600 text-[11px] font-black uppercase tracking-[0.4em] animate-pulse">Syncing Matrix Hub...</span>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {msg.shorts && msg.shorts.length > 0 && (
-                          <div className="pt-12 border-t border-white/5">
-                             <ShortsCarousel shorts={msg.shorts} onSelect={setSelectedShort} title="Foundational Video Clusters" layout="scroll" />
-                          </div>
-                        )}
-
+                            </div>
+                          ))}
+                        </div>
                         {msg.sources && msg.sources.length > 0 && (
-                          <div className="flex flex-wrap gap-3.5 pt-8">
+                          <div className="flex flex-wrap gap-3">
                             {msg.sources.map((s, i) => (
-                              <a key={i} href={s.uri} target="_blank" className="px-6 py-3 bg-zinc-900/40 hover:bg-zinc-800 border border-white/5 rounded-full text-[11px] font-black text-zinc-500 hover:text-white transition-all shadow-xl flex items-center gap-3 group/src">
-                                 <span className="w-2 h-2 rounded-full bg-blue-600/30 group-hover/src:bg-blue-500"></span>
-                                 <span className="tracking-tighter">{s.title}</span>
-                              </a>
+                              <a key={i} href={s.uri} target="_blank" className="px-5 py-2.5 bg-zinc-900/60 border border-white/5 rounded-full text-[10px] font-black text-zinc-500 hover:text-white uppercase tracking-tighter shadow-lg transition-all active-tap">{s.title}</a>
                             ))}
                           </div>
                         )}
+                        {msg.shorts && msg.shorts.length > 0 && <ShortsCarousel shorts={msg.shorts} onSelect={setSelectedMedia} title="Multimedia Synthesis" layout="scroll" />}
                       </div>
                     </div>
                   ))}
@@ -257,135 +244,106 @@ const App: React.FC = () => {
           )}
 
           {currentView === 'discover' && (
-            <div className="max-w-6xl mx-auto px-8 py-24 space-y-24 pb-96">
-              <div className="space-y-6 text-center animate-in fade-in slide-in-from-top-12 duration-1000">
-                <h1 className="text-8xl font-black text-white tracking-tighter uppercase leading-[0.75]">Global <br/><span className="text-red-600">Discover.</span></h1>
-                <p className="text-zinc-600 text-xl font-black tracking-[0.5em] uppercase">High-Fidelity Stream Matrix</p>
+            <div className="max-w-7xl mx-auto px-6 py-20 md:py-32 space-y-24 pb-64">
+              <header className="space-y-8 text-center md:text-left">
+                <h1 className="text-8xl md:text-[11rem] font-black text-white tracking-tighter uppercase leading-[0.75]">BAGEWADI <br/><span className="text-zinc-900">FEEDS.</span></h1>
+                <p className="text-zinc-700 font-black uppercase text-sm tracking-[0.8em] animate-pulse">
+                  {discoveryMode === 'all' ? 'Infinity Global Sync' : `${discoveryMode.toUpperCase()} Protocol Matrix`}
+                </p>
+              </header>
+
+              {/* Discovery Dedicated Native Search */}
+              <div className="max-w-2xl mx-auto md:mx-0">
+                <form onSubmit={handleDiscoverySearch} className="relative group">
+                   <input 
+                    type="text"
+                    value={discoverySearchQuery}
+                    onChange={(e) => setDiscoverySearchQuery(e.target.value)}
+                    placeholder={`Search within ${discoveryMode === 'all' ? 'Universal Feed' : discoveryMode.toUpperCase()}...`}
+                    className="w-full bg-zinc-900/40 border-2 border-white/5 rounded-3xl px-10 py-6 focus:outline-none focus:border-blue-500 transition-all font-bold text-white uppercase tracking-widest text-[13px] shadow-2xl backdrop-blur-3xl"
+                   />
+                   <button type="submit" className="absolute right-5 top-1/2 -translate-y-1/2 p-3 bg-blue-600 text-white rounded-full active-tap shadow-lg hover:scale-110 transition-transform">
+                      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                   </button>
+                </form>
               </div>
 
-              <div className="relative group max-w-4xl mx-auto">
-                <input 
-                  type="text" 
-                  value={discoverQuery}
-                  onChange={(e) => setDiscoverQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && loadDiscover(discoverQuery)}
-                  placeholder="Query global streams network..."
-                  className="w-full bg-zinc-900/80 border-2 border-white/5 rounded-[4rem] px-24 py-8 focus:outline-none focus:border-red-600/60 transition-all font-black text-2xl text-white placeholder-zinc-700 uppercase tracking-tight backdrop-blur-3xl"
-                />
-                <div className="absolute left-10 top-1/2 -translate-y-1/2 text-zinc-700 group-hover:text-red-600 transition-colors duration-700">
-                  <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={4}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                </div>
-                {discoverQuery && (
-                  <button onClick={() => loadDiscover(discoverQuery)} className="absolute right-10 top-1/2 -translate-y-1/2 px-12 py-4 bg-red-600 hover:bg-red-500 text-white text-xs font-black uppercase tracking-widest rounded-[2rem] transition-all">
-                    Sync Feed
-                  </button>
+              <div className="space-y-40">
+                {(discoveryMode === 'all' || discoveryMode === 'music') && (
+                  <ShortsCarousel shorts={music} onSelect={setSelectedMedia} title="Global Music Charts (Ad-Less)" layout="scroll" />
                 )}
+                {(discoveryMode === 'all' || discoveryMode === 'shorts') && (
+                  <ShortsCarousel shorts={shorts} onSelect={setSelectedMedia} title="Neural Shorts Flow" layout="scroll" />
+                )}
+                {(discoveryMode === 'all' || discoveryMode === 'youtube') && (
+                  <ShortsCarousel shorts={videos} onSelect={setSelectedMedia} title="Universal Multimedia Hub" layout="scroll" />
+                )}
+                
+                {isDiscoverLoading && (
+                  <div className="flex flex-col items-center justify-center py-20 space-y-6">
+                    <div className="w-14 h-14 border-4 border-zinc-900 border-t-blue-500 rounded-full animate-spin shadow-2xl"></div>
+                    <p className="text-zinc-700 font-black uppercase text-[10px] tracking-[1em] animate-pulse">Syncing Matrix nodes...</p>
+                  </div>
+                )}
+                
+                {/* Scroll Target for Countless Infinite Loading */}
+                <div ref={discoverObserverTarget} className="h-40 w-full flex items-center justify-center">
+                  {!isDiscoverLoading && (
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-900 to-transparent flex items-center justify-center">
+                       <span className="bg-[#050505] px-10 text-[9px] font-black text-zinc-800 uppercase tracking-[2em] whitespace-nowrap">End of Current Matrix</span>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {youtubeKeys.length === 0 && apiKeys.length === 0 ? (
-                <div className="p-28 text-center bg-zinc-900/10 border-2 border-dashed border-white/5 rounded-[5rem] space-y-12 backdrop-blur-3xl">
-                  <div className="w-28 h-28 bg-red-600/10 rounded-[2.5rem] flex items-center justify-center mx-auto text-red-600 border border-red-600/20">
-                     <svg className="w-14 h-14" viewBox="0 0 24 24" fill="currentColor"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-                  </div>
-                  <div className="space-y-4">
-                    <p className="text-zinc-100 font-black text-4xl tracking-tighter uppercase leading-none">Cluster Node Offline</p>
-                    <p className="text-zinc-500 text-lg font-bold max-w-md mx-auto leading-relaxed tracking-tight">Authorization mismatch. Inject a valid YouTube API Access Node in System Configuration to bootstrap the matrix.</p>
-                  </div>
-                  <button onClick={() => setIsSettingsOpen(true)} className="px-16 py-6 bg-zinc-800 hover:bg-white hover:text-black text-white font-black uppercase tracking-widest text-xs rounded-full transition-all border border-white/5">Access Config</button>
-                </div>
-              ) : isDiscoverLoading ? (
-                <div className="flex flex-col items-center justify-center p-48 space-y-12">
-                  <div className="w-28 h-28 border-8 border-red-600/10 border-t-red-600 rounded-full animate-spin"></div>
-                  <div className="text-center space-y-4">
-                    <p className="text-white font-black text-3xl tracking-tighter uppercase">Initializing Streams</p>
-                    <p className="text-zinc-700 text-xs uppercase tracking-[0.6em] font-black animate-pulse">Establishing Peer-to-Peer Global Hook</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-32">
-                   <ShortsCarousel shorts={shorts} onSelect={setSelectedShort} title="Primary Discovery Clusters" />
-                </div>
-              )}
             </div>
           )}
 
           {currentView === 'library' && (
-             <div className="max-w-6xl mx-auto py-32 px-10 space-y-20 animate-in fade-in slide-in-from-bottom-12 duration-1000">
-               <div className="space-y-8">
-                  <h1 className="text-9xl font-black text-white tracking-tighter uppercase leading-[0.75]">Log Vault.</h1>
-                  <p className="text-zinc-700 text-2xl font-black tracking-[0.5em] uppercase">High-Fidelity History Logs</p>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-10 pb-96">
+            <div className="max-w-5xl mx-auto px-6 py-24 space-y-24 pb-96">
+               <h1 className="text-8xl font-black text-white tracking-tighter uppercase leading-none">THE VAULT.</h1>
+               <div className="grid gap-6">
                  {threads.length === 0 ? (
-                    <div className="col-span-2 p-48 text-center text-zinc-900 font-black tracking-[1em] bg-zinc-900/10 rounded-[6rem] border-2 border-dashed border-white/5 uppercase text-xs">Void Status: 0 Active Node Records</div>
-                 ) : threads.map(t => (
-                   <div key={t.id} onClick={() => { setActiveThreadId(t.id); setCurrentView('home'); }} className="bg-zinc-900/40 border border-white/5 rounded-[4rem] p-16 hover:bg-zinc-800/80 hover:border-blue-600/30 transition-all cursor-pointer flex justify-between items-center group shadow-[0_40px_80px_rgba(0,0,0,0.6)] hover:-translate-y-4">
-                     <div className="flex flex-col gap-6 min-w-0">
-                       <h3 className="text-4xl font-black text-zinc-200 group-hover:text-blue-500 truncate pr-12 tracking-tighter uppercase transition-colors duration-500">{t.title}</h3>
-                       <div className="flex items-center gap-6">
-                         <span className="text-[12px] font-black uppercase text-zinc-700 tracking-[0.3em]">{new Date(t.createdAt).toLocaleDateString()}</span>
-                         <div className="w-2.5 h-2.5 bg-zinc-800 rounded-full"></div>
-                         <span className="text-[12px] font-black uppercase text-zinc-700 tracking-[0.3em]">{t.messages.length} NODES SYNCED</span>
-                       </div>
-                     </div>
-                     <div className="p-7 bg-zinc-900 rounded-[2.5rem] text-zinc-800 group-hover:text-white group-hover:bg-blue-600 transition-all duration-700 border border-white/5">
-                       <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5}><path d="m9 18 6-6-6-6"/></svg>
-                     </div>
+                   <div className="py-40 text-center bg-zinc-900/20 rounded-[4rem] border border-dashed border-white/5 animate-in zoom-in-95 duration-700">
+                      <p className="text-zinc-700 font-black uppercase tracking-[0.5em]">Vault Status: Empty</p>
                    </div>
+                 ) : threads.map(t => (
+                   <button key={t.id} onClick={() => { setActiveThreadId(t.id); setCurrentView('home'); }} className="p-10 bg-zinc-900/40 rounded-[3rem] border border-white/5 text-left hover:border-blue-500/30 transition-all flex justify-between items-center group active-tap shadow-[0_30px_60px_rgba(0,0,0,0.4)]">
+                     <div className="min-w-0 pr-8">
+                       <h3 className="text-4xl font-black text-zinc-200 group-hover:text-white truncate tracking-tighter uppercase">{t.title}</h3>
+                       <p className="text-[11px] text-zinc-700 font-black uppercase tracking-widest mt-4">{new Date(t.createdAt).toLocaleDateString()} — Log record node</p>
+                     </div>
+                     <div className="p-6 bg-zinc-950 rounded-2xl text-zinc-800 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner group-hover:rotate-12 duration-500">
+                        <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={5}><path d="m9 18 6-6-6-6"/></svg>
+                     </div>
+                   </button>
                  ))}
                </div>
-             </div>
+            </div>
           )}
         </div>
 
-        {(currentView === 'home' || (activeThread && activeThread.messages.length > 0)) && (
-          <div className="shrink-0 bg-gradient-to-t from-[#131314] via-[#131314] to-transparent pt-32 pb-14 px-10">
-             <div className="max-w-4xl mx-auto filter drop-shadow-[0_50px_120px_rgba(0,0,0,1)] animate-in slide-in-from-bottom-24 duration-[1400ms]">
+        {/* Floating Android Search Hub */}
+        {(currentView === 'home' || activeThreadId) && (
+          <div className="shrink-0 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-40 pb-12 px-8 relative z-20">
+             <div className="max-w-3xl mx-auto shadow-[0_60px_120px_rgba(0,0,0,1)] animate-in slide-in-from-bottom-24 duration-[1200ms]">
                 <SearchBar onSearch={handleSearch} isLoading={isLoading} />
              </div>
           </div>
         )}
 
         <SettingsModal 
-          isOpen={isSettingsOpen} 
-          onClose={() => setIsSettingsOpen(false)} 
-          apiKeys={apiKeys}
-          onSaveKeys={(keys) => { setApiKeys(keys); localStorage.setItem('pplx_keys', JSON.stringify(keys)); }}
-          imageKeys={{openai: [], stability: [], replicate: []}}
-          onSaveImageKeys={() => {}}
-          youtubeKeys={youtubeKeys}
-          onSaveYoutubeKeys={(keys) => { setYoutubeKeys(keys); localStorage.setItem('yt_keys_pool', JSON.stringify(keys)); }}
-          activeImageProvider="openai"
-          onSetActiveImageProvider={() => {}}
-          vpnEnabled={vpnEnabled} 
-          onToggleVPN={(v) => {setVpnEnabled(v); localStorage.setItem('vpn_status', String(v));}} 
+          isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} 
+          apiKeys={apiKeys} onSaveKeys={(keys) => { setApiKeys(keys); localStorage.setItem('pplx_keys', JSON.stringify(keys)); }}
+          imageKeys={{openai: [], stability: [], replicate: []}} onSaveImageKeys={() => {}}
+          youtubeKeys={youtubeKeys} onSaveYoutubeKeys={(keys) => { setYoutubeKeys(keys); localStorage.setItem('yt_keys_pool', JSON.stringify(keys)); }}
+          activeImageProvider="openai" onSetActiveImageProvider={() => {}}
+          vpnEnabled={vpnEnabled} onToggleVPN={(v) => {setVpnEnabled(v); localStorage.setItem('vpn_status', String(v));}} 
         />
-
-        <VideoModal short={selectedShort} onClose={() => setSelectedShort(null)} />
+        
+        <VideoModal short={selectedMedia} onClose={() => setSelectedMedia(null)} />
       </main>
-      
       <style>{`
-        @keyframes loading {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(500%); }
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #2a2c2e;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #3a3c3e;
-        }
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
+        @keyframes loading { 0% { left: -100%; } 100% { left: 500%; } }
       `}</style>
     </div>
   );

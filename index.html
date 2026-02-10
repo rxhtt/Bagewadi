@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bagewadi | Quantum Intelligence</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Bagewadi | Neural Discovery</title>
+    <meta name="theme-color" content="#050505">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="preconnect" href="https://www.youtube-nocookie.com">
+    <link rel="preconnect" href="https://www.google.com">
+    <link rel="preconnect" href="https://i.ytimg.com">
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; 
       frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; 
@@ -13,21 +19,24 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --gemini-bg: #131314;
-            --gemini-sidebar: #1e1f20;
-            --gemini-surface: #1e1f20;
-            --gemini-text: #e3e3e3;
-            --gemini-accent: #444746;
+            --perplex-bg: #050505;
+            --perplex-sidebar: #0f0f10;
+            --perplex-accent: #1c1c1e;
+            --perplex-text: #f5f5f7;
+            --android-blue: #3b82f6;
         }
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--gemini-bg);
-            color: var(--gemini-text);
+            background-color: var(--perplex-bg);
+            color: var(--perplex-text);
             margin: 0;
             overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            overscroll-behavior-y: contain;
         }
         .custom-scrollbar::-webkit-scrollbar {
             width: 4px;
@@ -36,25 +45,57 @@
             background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #2a2b2c;
+            background: rgba(255,255,255,0.08);
             border-radius: 10px;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: #444746;
+        .glass {
+            background: rgba(15, 15, 16, 0.75);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.08);
         }
-        .gemini-gradient {
-            background: linear-gradient(74deg, #4285f4 0, #9b72cb 9%, #d96570 20%, #d96570 24%, #9b72cb 35%, #4285f4 44%, #9b72cb 50%, #d96570 56%, #131314 75%, #131314 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-size: 400% 100%;
-            animation: moveGradient 8s linear infinite;
+        .ambient-blur {
+            position: fixed;
+            width: 150vw;
+            height: 150vh;
+            top: -25%;
+            left: -25%;
+            filter: blur(140px);
+            opacity: 0.12;
+            z-index: -1;
+            pointer-events: none;
+            background: radial-gradient(circle at center, var(--android-blue), transparent 60%);
+            animation: pulse 12s infinite alternate ease-in-out;
         }
-        @keyframes moveGradient {
-            0% { background-position: 0% 50%; }
-            100% { background-position: 400% 50%; }
+        @keyframes pulse {
+          from { transform: scale(1) rotate(0deg); opacity: 0.08; }
+          to { transform: scale(1.1) rotate(5deg); opacity: 0.15; }
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .active-tap:active {
+            transform: scale(0.97);
+            transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .chat-bubble-user {
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 28px 28px 4px 28px;
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+        }
+        .chat-bubble-ai {
+            background: transparent;
+            padding: 0;
+        }
+        
+        .android-sheet {
+            box-shadow: 0 -20px 60px -10px rgba(0,0,0,0.8);
+            will-change: transform;
+            transform-gpu: translate3d(0,0,0);
+        }
     </style>
 <script type="importmap">
 {
@@ -71,6 +112,7 @@
 </head>
 <body>
     <div id="root"></div>
+    <div class="ambient-blur"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
 </html>
