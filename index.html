@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bagewadi</title>
+    <!-- Updated CSP to allow YouTube embeds and Google API calls as suggested in troubleshooting -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; 
+      frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; 
+      img-src 'self' data: https:;
+      connect-src 'self' https:;
+    ">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gemini-bg: #131314;
+            --gemini-sidebar: #1e1f20;
+            --gemini-surface: #1e1f20;
+            --gemini-text: #e3e3e3;
+            --gemini-accent: #444746;
+        }
+        body {
+            font-family: 'Inter', 'Google Sans', sans-serif;
+            background-color: var(--gemini-bg);
+            color: var(--gemini-text);
+            margin: 0;
+            overflow: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2a2b2c;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #444746;
+        }
+        .gemini-gradient {
+            background: linear-gradient(74deg, #4285f4 0, #9b72cb 9%, #d96570 20%, #d96570 24%, #9b72cb 35%, #4285f4 44%, #9b72cb 50%, #d96570 56%, #131314 75%, #131314 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-size: 400% 100%;
+            animation: moveGradient 8s linear infinite;
+        }
+        @keyframes moveGradient {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 400% 50%; }
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root"></div>
+</body>
+</html>
