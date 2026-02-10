@@ -2,21 +2,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Source, SearchFocus, AttachedFile, ModelID } from "../types";
 
-export class GeminiService {
-  // Simplified service using process.env.API_KEY exclusively as per guidelines.
+// Safety check for process.env in browser environments to prevent white-screen crashes
+const getApiKey = () => {
+  try {
+    return (process.env.API_KEY as string) || '';
+  } catch (e) {
+    console.warn("process.env.API_KEY not found in global scope");
+    return '';
+  }
+};
 
+export class GeminiService {
   /**
-   * Generates an image using gemini-2.5-flash-image (the default model for basic image tasks).
+   * Generates an image using gemini-2.5-flash-image
    */
   async generateImage(prompt: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{ parts: [{ text: prompt }] }],
       config: { imageConfig: { aspectRatio: "16:9" } }
     });
 
-    // Iterate through all parts to find the image part as per guidelines.
     if (response.candidates?.[0]?.content?.parts) {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
@@ -31,7 +39,8 @@ export class GeminiService {
    * Fetches trending global news using gemini-3-flash-preview with JSON schema.
    */
   async getDiscoverTrends(): Promise<{ title: string; description: string }[]> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -68,7 +77,6 @@ export class GeminiService {
     onStream?: (text: string) => void
   ): Promise<{ content: string; sources: Source[]; related: string[] }> {
     
-    // Check if query is for image generation
     const isImageRequest = /draw|generate image|create an image|show me a picture/i.test(query);
     if (isImageRequest) {
       const imgUrl = await this.generateImage(query);
@@ -79,7 +87,8 @@ export class GeminiService {
       };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     
     const sysPrompt = `You are a high-performance Research Engine (Model: ${model}). 
     Mode: ${focus}. Focus on synthesis and directness. 
@@ -99,7 +108,6 @@ export class GeminiService {
     });
 
     const content = response.text || "";
-    // Extracting URLs from groundingChunks as per mandatory SDK requirements.
     const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources: Source[] = grounding
       .filter((c: any) => c.web)
