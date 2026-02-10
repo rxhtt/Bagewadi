@@ -1,13 +1,19 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Source, SearchFocus, AttachedFile, ModelID } from "../types";
 
 export class GeminiService {
   /**
+   * Helper to always get a fresh AI instance with the current API key
+   */
+  private getClient() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+
+  /**
    * Generates an image using gemini-2.5-flash-image
    */
   async generateImage(prompt: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: [{ parts: [{ text: prompt }] }],
@@ -28,7 +34,7 @@ export class GeminiService {
    * Fetches trending global news using gemini-3-flash-preview with JSON schema.
    */
   async getDiscoverTrends(): Promise<{ title: string; description: string }[]> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -61,8 +67,7 @@ export class GeminiService {
     focus: SearchFocus, 
     model: ModelID,
     history: { role: string; content: string }[] = [],
-    attachment?: AttachedFile,
-    onStream?: (text: string) => void
+    attachment?: AttachedFile
   ): Promise<{ content: string; sources: Source[]; related: string[] }> {
     
     const isImageRequest = /draw|generate image|create an image|show me a picture/i.test(query);
@@ -75,12 +80,19 @@ export class GeminiService {
       };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     
-    const sysPrompt = `You are a high-performance Research Engine (Model: ${model}). 
-    Mode: ${focus}. Focus on synthesis and directness. 
-    ${attachment ? `Context from uploaded file (${attachment.name}): ${attachment.content}` : ''}
-    Always cite sources using [1], [2].`;
+    const masterPrompt = `You are a world-class Research and Discovery Engine, modeled after the highest performance intelligence systems.
+    Current Search Focus: ${focus}.
+    
+    OPERATIONAL DIRECTIVES:
+    1. SYNTHESIS: Provide comprehensive, accurate, and direct answers. Avoid conversational filler.
+    2. CITATION: Use inline citations like [1], [2] corresponding to the provided search results.
+    3. STRUCTURE: Use markdown headers, bold text for key terms, and lists for complex data.
+    4. ACCURACY: If information is unavailable or contradictory, state it clearly.
+    5. CONTEXT: ${attachment ? `Incorporate the following user-provided data into your analysis: "${attachment.content}"` : 'No additional attachments provided.'}
+
+    Always respond as a precise, high-utility research tool.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
@@ -89,14 +101,16 @@ export class GeminiService {
         { role: 'user', parts: [{ text: query }] }
       ],
       config: {
-        systemInstruction: sysPrompt,
+        systemInstruction: masterPrompt,
         tools: [{ googleSearch: {} }]
       }
     });
 
-    const content = response.text || "";
-    const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const sources: Source[] = grounding
+    const content = response.text || "I was unable to synthesize a response. Please try refining your query.";
+    
+    // Extract grounding sources
+    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const sources: Source[] = groundingChunks
       .filter((c: any) => c.web)
       .map((c: any) => ({ 
         title: c.web.title || hostname(c.web.uri), 
@@ -105,8 +119,12 @@ export class GeminiService {
 
     return {
       content,
-      sources,
-      related: ["Detailed breakdown", "Practical examples", "Historical context"]
+      sources: sources.slice(0, 5), // Keep the top 5 most relevant sources
+      related: [
+        "Provide more technical depth",
+        "Show alternative perspectives",
+        "Recent updates on this topic"
+      ]
     };
   }
 }

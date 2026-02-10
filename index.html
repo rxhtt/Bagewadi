@@ -14,15 +14,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
-    <script>
-      // Diagnostic tool: If the app crashes on boot, this will help identify why.
-      window.onerror = function(msg, url, lineNo, columnNo, error) {
-        console.error('Fatal Error:', msg, error);
-        return false;
-      };
-      // Polyfill for libraries expecting process.env
-      window.process = { env: { API_KEY: '' } };
-    </script>
     <style>
         :root {
             --gemini-bg: #131314;
@@ -80,7 +71,7 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- No importmap needed; Vite handles the dependencies in Vercel build -->
-    <script type="module" src="/index.tsx"></script>
+    <!-- Point to the local TSX file; Vite will bundle this for production -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>

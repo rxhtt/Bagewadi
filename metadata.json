@@ -2,6 +2,7 @@
   "name": "Perplexity Replica",
   "description": "A high-performance AI search engine replica of Perplexity.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "geolocation"
   ]
 }
